@@ -21,15 +21,17 @@ dp = Dispatcher(storage=storage)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Railway - из переменной окружения
+# Проверяем есть ли переменная окружения
 google_creds_str = os.environ.get('GOOGLE_CREDENTIALS')
-if not google_creds_str:
-    raise ValueError("GOOGLE_CREDENTIALS переменная не найдена!")
+if google_creds_str:
+    # Railway - из переменной окружения
+    google_creds = json.loads(google_creds_str)
+    creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
+else:
+    # Локально - из файла
+    creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
 
-google_creds = json.loads(google_creds_str)
-creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
 client = gspread.authorize(creds)
-
 sheet = client.open_by_key("13dKqRWCfg9CMcSYwCTXFPaN0b4uwdd4DY7frJnq2Qcg").get_worksheet(0)
 
 class Form(StatesGroup):
@@ -77,12 +79,15 @@ def get_patient_display(surname: str, discharge: str, metka: str = "", sostoyani
     """Формирует строку отображения пациента с метками"""
     marks = ""
     
+    # Добавляем метку (постоянная)
     if metka and metka.strip() and metka.strip() != "Нет":
         marks += metka.strip() + " "
     
+    # Добавляем состояние (меняется)
     if sostoyanie and sostoyanie.strip():
         marks += sostoyanie.strip() + " "
     
+    # Формируем строку
     if marks:
         return f"{marks}{surname} — выписка {discharge}"
     else:
@@ -94,7 +99,7 @@ def get_all_patients():
     data = all_rows[1:] if len(all_rows) > 1 else []
     
     patients = []
-    for idx, row in enumerate(data, start=2):
+    for idx, row in enumerate(data, start=2):  # start=2 потому что строка 1 - заголовки
         if len(row) > 6 and row[6].strip() == "Лежит":
             patient_id = row[0] if len(row) > 0 else str(idx)
             palata = row[1] if len(row) > 1 else "?"
@@ -167,16 +172,17 @@ async def surname_entered(message: types.Message, state: FSMContext):
     new_id = len(all_rows)
     
     try:
+        # Добавляем пациента с пустыми метками (их заполнят в таблице)
         sheet.append_row([
-            str(new_id),
-            palata,
-            koyka,
-            surname,
-            today,
-            discharge_date,
-            "Лежит",
-            "",
-            ""
+            str(new_id),      # ID
+            palata,           # Палата
+            koyka,            # Койка
+            surname,          # Фамилия
+            today,            # Дата поступления
+            discharge_date,   # Дата выписки
+            "Лежит",          # Статус
+            "",               # Метка (заполнят в таблице)
+            ""                # Состояние (заполнят в таблице)
         ])
         
         await message.answer(
@@ -202,9 +208,11 @@ async def start_discharge(message: types.Message, state: FSMContext):
         await message.answer("Нет пациентов для выписки", reply_markup=keyboard)
         return
     
+    # Создаем инлайн-клавиатуру с пациентами
     buttons = []
     for p in patients:
         display_text = f"{p['surname']} (П{p['palata']}, К{p['koyka']})"
+        # Обрезаем текст если слишком длинный
         if len(display_text) > 30:
             display_text = display_text[:27] + "..."
         
@@ -213,6 +221,7 @@ async def start_discharge(message: types.Message, state: FSMContext):
             callback_data=f"delete_{p['row_num']}"
         )])
     
+    # Добавляем кнопку отмены
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")])
     
     keyboard_inline = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -227,6 +236,7 @@ async def process_delete(callback: types.CallbackQuery):
     row_num = int(callback.data.split("_")[1])
     
     try:
+        # Получаем данные пациента перед удалением
         all_rows = sheet.get_all_values()
         if row_num <= len(all_rows):
             patient_data = all_rows[row_num - 1]
@@ -234,6 +244,7 @@ async def process_delete(callback: types.CallbackQuery):
             palata = patient_data[1] if len(patient_data) > 1 else "?"
             koyka = patient_data[2] if len(patient_data) > 2 else "?"
             
+            # Меняем статус на "Выписан" вместо удаления строки
             sheet.update_cell(row_num, 7, "Выписан")
             
             await callback.message.edit_text(
@@ -243,6 +254,7 @@ async def process_delete(callback: types.CallbackQuery):
                 f"Койка теперь свободна."
             )
             
+            # Отправляем главное меню
             await callback.message.answer(
                 "Выберите действие:",
                 reply_markup=keyboard
@@ -269,8 +281,11 @@ async def handle_view_buttons(message: types.Message, state: FSMContext):
     data = all_rows[1:] if len(all_rows) > 1 else []
 
     if message.text == "📊 Свободные койки":
+        # Считаем занятые койки (статус "Лежит")
         lying = sum(1 for row in data if len(row) > 6 and row[6].strip() == "Лежит")
+        # Всего коек в отделении (7 в палате 11 + 10 в палате 12)
         total = 17
+        # Свободные = Всего - Занятые
         free = total - lying
         await message.answer(
             f"📊 Статистика коек:\n\n"
