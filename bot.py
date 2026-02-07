@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import os
-import json
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
@@ -20,8 +18,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=storage)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-google_creds = json.loads(os.environ.get('GOOGLE_CREDENTIALS'))
-creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
+creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
 client = gspread.authorize(creds)
 
 sheet = client.open_by_key("13dKqRWCfg9CMcSYwCTXFPaN0b4uwdd4DY7frJnq2Qcg").get_worksheet(0)
