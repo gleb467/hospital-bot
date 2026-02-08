@@ -37,6 +37,7 @@ sheet = client.open_by_key("13dKqRWCfg9CMcSYwCTXFPaN0b4uwdd4DY7frJnq2Qcg").get_w
 class Form(StatesGroup):
     choosing_palata = State()
     entering_surname = State()
+    choosing_days = State()  # <- ДОБАВИЛИ
     choosing_patient_to_delete = State()
 
 keyboard = ReplyKeyboardMarkup(
@@ -149,40 +150,72 @@ async def cancel_from_palata(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Отменено", reply_markup=keyboard)
 
-@dp.message(Form.entering_surname, lambda message: message.text == "❌ Отмена")
-async def cancel_from_surname(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Отменено", reply_markup=keyboard)
-
 @dp.message(Form.entering_surname)
 async def surname_entered(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    palata = data.get('palata')
     surname = message.text.strip()
     
     if not surname or len(surname) < 2:
         await message.answer("Введите корректную фамилию:")
         return
     
+    # Спрашиваем срок лечения
+    await state.update_data(surname=surname)
+    await state.set_state(Form.choosing_days)
+    
+    days_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="3 дня"), KeyboardButton(text="7 дней")],
+            [KeyboardButton(text="14 дней"), KeyboardButton(text="21 день")],
+            [KeyboardButton(text="30 дней"), KeyboardButton(text="❌ Отмена")]
+        ],
+        resize_keyboard=True
+    )
+    
+    await message.answer(
+        f"Фамилия: {surname}\nВыберите срок лечения:",
+        reply_markup=days_keyboard
+    )
+
+@dp.message(Form.choosing_days, lambda message: message.text == "❌ Отмена")
+async def cancel_from_days(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Отменено", reply_markup=keyboard)
+
+@dp.message(Form.choosing_days, lambda message: message.text in ["3 дня", "7 дней", "14 дней", "21 день", "30 дней"])
+async def days_chosen(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    palata = data.get('palata')
+    surname = data.get('surname')
+    
+    # Определяем количество дней
+    days_map = {
+        "3 дня": 3,
+        "7 дней": 7,
+        "14 дней": 14,
+        "21 день": 21,
+        "30 дней": 30
+    }
+    days = days_map.get(message.text, 7)
+    
     koyka = find_free_bed(palata)
     today = datetime.now().strftime("%d.%m.%Y")
-    discharge_date = (datetime.now() + timedelta(days=7)).strftime("%d.%m.%Y")
+    discharge_date = (datetime.now() + timedelta(days=days)).strftime("%d.%m.%Y")
     
     all_rows = sheet.get_all_values()
     new_id = len(all_rows)
     
     try:
-        # Добавляем пациента с пустыми метками (их заполнят в таблице)
         sheet.append_row([
-            str(new_id),      # ID
-            palata,           # Палата
-            koyka,            # Койка
-            surname,          # Фамилия
-            today,            # Дата поступления
-            discharge_date,   # Дата выписки
-            "Лежит",          # Статус
-            "",               # Метка (заполнят в таблице)
-            ""                # Состояние (заполнят в таблице)
+            str(new_id),
+            palata,
+            koyka,
+            surname,
+            today,
+            discharge_date,
+            "Лежит",
+            "",
+            ""
         ])
         
         await message.answer(
@@ -190,7 +223,7 @@ async def surname_entered(message: types.Message, state: FSMContext):
             f"Фамилия: {surname}\n"
             f"Палата: {palata}, койка: {koyka}\n"
             f"Поступил: {today}\n"
-            f"Выписка: {discharge_date} (через 7 дней)\n\n"
+            f"Выписка: {discharge_date} (через {days} дней)\n\n"
             f"💡 Метки и состояние можно установить в таблице",
             reply_markup=keyboard
         )
