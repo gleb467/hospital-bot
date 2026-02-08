@@ -69,7 +69,7 @@ palata_keyboard = ReplyKeyboardMarkup(
 )
 
 def find_free_bed(palata: str) -> str:
-    """Находит первую свободную койку в палате"""
+    """Находит первую свободную койку в палате обеим"""
     all_rows = sheet.get_all_values()
     data = all_rows[1:]
     
