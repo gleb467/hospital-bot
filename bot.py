@@ -21,25 +21,26 @@ dp = Dispatcher(storage=storage)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Проверяем есть ли переменная окружения
-google_creds_str = os.environ.get('GOOGLE_CREDENTIALS')
+import base64
 
-if google_creds_str:
-    # Railway - из переменной окружения
+google_creds_b64 = os.environ.get('GOOGLE_CREDENTIALS_B64')
+
+if google_creds_b64:
     try:
-        google_creds = json.loads(google_creds_str)
+        creds_json = base64.b64decode(google_creds_b64).decode("utf-8")
+        google_creds = json.loads(creds_json)
         creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
-        print("✅ Используем GOOGLE_CREDENTIALS из переменной окружения")
+        print("✅ Используем GOOGLE_CREDENTIALS_B64 из переменной окружения")
     except Exception as e:
-        print(f"❌ Ошибка чтения GOOGLE_CREDENTIALS: {e}")
+        print(f"❌ Ошибка чтения GOOGLE_CREDENTIALS_B64: {e}")
         raise
 else:
-    # Локально - из файла
     if os.path.exists("service_account.json"):
         creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
         print("✅ Используем service_account.json локально")
     else:
-        raise FileNotFoundError("Не найдена переменная GOOGLE_CREDENTIALS и файл service_account.json")
+        raise FileNotFoundError("Не найдена GOOGLE_CREDENTIALS_B64 и файл service_account.json")
+
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key("13dKqRWCfg9CMcSYwCTXFPaN0b4uwdd4DY7frJnq2Qcg").get_worksheet(0)
