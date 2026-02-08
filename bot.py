@@ -21,25 +21,12 @@ dp = Dispatcher(storage=storage)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-import base64
-
-google_creds_b64 = os.environ.get('GOOGLE_CREDENTIALS_B64')
-
-if google_creds_b64:
-    try:
-        creds_json = base64.b64decode(google_creds_b64).decode("utf-8")
-        google_creds = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
-        print("✅ Используем GOOGLE_CREDENTIALS_B64 из переменной окружения")
-    except Exception as e:
-        print(f"❌ Ошибка чтения GOOGLE_CREDENTIALS_B64: {e}")
-        raise
+google_creds_str = os.environ.get('GOOGLE_CREDENTIALS')
+if google_creds_str:
+    google_creds = json.loads(google_creds_str)
+    creds = Credentials.from_service_account_info(google_creds, scopes=SCOPES)
 else:
-    if os.path.exists("service_account.json"):
-        creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
-        print("✅ Используем service_account.json локально")
-    else:
-        raise FileNotFoundError("Не найдена GOOGLE_CREDENTIALS_B64 и файл service_account.json")
+    creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
 
 
 client = gspread.authorize(creds)
